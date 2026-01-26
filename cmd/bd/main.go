@@ -74,6 +74,7 @@ var (
 var (
 	noAutoFlush     bool
 	noAutoImport    bool
+	noAutoStart     bool // Disable daemon auto-start
 	sandboxMode     bool
 	allowStale      bool          // Use --allow-stale: skip staleness check (emergency escape hatch)
 	noDb            bool          // Use --no-db mode: load from JSONL, write back after each command
@@ -206,6 +207,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&actor, "actor", "", "Actor name for audit trail (default: $BD_ACTOR, git user.name, $USER)")
 	rootCmd.PersistentFlags().BoolVar(&jsonOutput, "json", false, "Output in JSON format")
 	rootCmd.PersistentFlags().BoolVar(&noDaemon, "no-daemon", false, "Force direct storage mode, bypass daemon if running")
+	rootCmd.PersistentFlags().BoolVar(&noAutoStart, "no-auto-start", false, "Disable daemon auto-start (commands won't start daemon automatically)")
 	rootCmd.PersistentFlags().BoolVar(&noAutoFlush, "no-auto-flush", false, "Disable automatic JSONL sync after CRUD operations")
 	rootCmd.PersistentFlags().BoolVar(&noAutoImport, "no-auto-import", false, "Disable automatic JSONL import when newer than DB")
 	rootCmd.PersistentFlags().BoolVar(&sandboxMode, "sandbox", false, "Sandbox mode: disables daemon and auto-sync")
@@ -603,7 +605,7 @@ var rootCmd = &cobra.Command{
 			Connected:        false,
 			Degraded:         true,
 			SocketPath:       socketPath,
-			AutoStartEnabled: shouldAutoStartDaemon(),
+			AutoStartEnabled: shouldAutoStartDaemon() && !noAutoStart,
 			FallbackReason:   FallbackNone,
 		}
 
