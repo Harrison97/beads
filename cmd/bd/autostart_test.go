@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
-	
+
 	"github.com/steveyegge/beads/internal/config"
 )
 
@@ -14,7 +14,7 @@ func TestDaemonAutoStart(t *testing.T) {
 	if err := config.Initialize(); err != nil {
 		t.Fatalf("Failed to initialize config: %v", err)
 	}
-	
+
 	// Save original env
 	origAutoStart := os.Getenv("BEADS_AUTO_START_DAEMON")
 	origNoDaemon := os.Getenv("BEADS_NO_DAEMON")
@@ -80,6 +80,25 @@ func TestDaemonAutoStart(t *testing.T) {
 		os.Setenv("BEADS_AUTO_START_DAEMON", "true")
 		if !shouldAutoStartDaemon() {
 			t.Error("Expected auto-start to be enabled when set to 'true'")
+		}
+	})
+
+	t.Run("shouldAutoStartDaemon respects --no-auto-start flag", func(t *testing.T) {
+		// Save original value
+		origNoAutoStart := noAutoStart
+		defer func() { noAutoStart = origNoAutoStart }()
+
+		// Test with flag set
+		noAutoStart = true
+		if shouldAutoStartDaemon() {
+			t.Error("Expected auto-start to be disabled when --no-auto-start flag is set")
+		}
+
+		// Test with flag unset (should respect config)
+		noAutoStart = false
+		os.Setenv("BEADS_AUTO_START_DAEMON", "true")
+		if !shouldAutoStartDaemon() {
+			t.Error("Expected auto-start to be enabled when --no-auto-start flag is not set")
 		}
 	})
 }

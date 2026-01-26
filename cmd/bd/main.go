@@ -74,6 +74,7 @@ var (
 var (
 	noAutoFlush     bool
 	noAutoImport    bool
+	noAutoStart     bool
 	sandboxMode     bool
 	allowStale      bool          // Use --allow-stale: skip staleness check (emergency escape hatch)
 	noDb            bool          // Use --no-db mode: load from JSONL, write back after each command
@@ -208,6 +209,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&noDaemon, "no-daemon", false, "Force direct storage mode, bypass daemon if running")
 	rootCmd.PersistentFlags().BoolVar(&noAutoFlush, "no-auto-flush", false, "Disable automatic JSONL sync after CRUD operations")
 	rootCmd.PersistentFlags().BoolVar(&noAutoImport, "no-auto-import", false, "Disable automatic JSONL import when newer than DB")
+	rootCmd.PersistentFlags().BoolVar(&noAutoStart, "no-auto-start", false, "Disable automatic daemon startup")
 	rootCmd.PersistentFlags().BoolVar(&sandboxMode, "sandbox", false, "Sandbox mode: disables daemon and auto-sync")
 	rootCmd.PersistentFlags().BoolVar(&allowStale, "allow-stale", false, "Allow operations on potentially stale data (skip staleness check)")
 	rootCmd.PersistentFlags().BoolVar(&noDb, "no-db", false, "Use no-db mode: load from JSONL, no SQLite")
@@ -310,6 +312,14 @@ var rootCmd = &cobra.Command{
 				Value  interface{}
 				WasSet bool
 			}{noAutoImport, true}
+		}
+		if !cmd.Flags().Changed("no-auto-start") {
+			noAutoStart = config.GetBool("no-auto-start")
+		} else {
+			flagOverrides["no-auto-start"] = struct {
+				Value  interface{}
+				WasSet bool
+			}{noAutoStart, true}
 		}
 		if !cmd.Flags().Changed("no-db") {
 			noDb = config.GetBool("no-db")

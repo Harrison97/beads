@@ -97,6 +97,11 @@ func singleProcessOnlyBackend() bool {
 
 // shouldAutoStartDaemon checks if daemon auto-start is enabled
 func shouldAutoStartDaemon() bool {
+	// Check --no-auto-start flag first (highest priority override)
+	if noAutoStart {
+		return false
+	}
+
 	// Dolt backend doesn't need daemon - it has its own sync via dolt sql-server.
 	// This applies to both embedded and server modes.
 	if isDoltBackend() {
