@@ -925,16 +925,10 @@ func init() {
 func createInRig(cmd *cobra.Command, rigName, explicitID, title, description, issueType string, priority int, design, acceptance, notes, assignee string, labels []string, externalRef string, wisp bool) {
 	ctx := rootCtx
 
-	// Find the town-level beads directory (where routes.jsonl lives)
-	townBeadsDir, err := townBeadsDirFromCwd()
+	// Resolve the target rig's beads directory and prefix
+	targetBeadsDir, targetPrefix, err := resolveTargetRigBeadsDir(rigName)
 	if err != nil {
 		FatalError("cannot use --rig: %v", err)
-	}
-
-	// Resolve the target rig's beads directory and prefix
-	targetBeadsDir, targetPrefix, err := routing.ResolveBeadsDirForRig(rigName, townBeadsDir)
-	if err != nil {
-		FatalError("%v", err)
 	}
 
 	// Open storage for the target rig using factory to respect backend config

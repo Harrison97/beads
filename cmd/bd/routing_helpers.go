@@ -22,6 +22,15 @@ func townBeadsDirFromCwd() (string, error) {
 	return routing.FindTownBeadsDir(beadsDir)
 }
 
+func resolveTargetRigBeadsDir(rigName string) (string, string, error) {
+	townBeadsDir, err := townBeadsDirFromCwd()
+	if err != nil {
+		return "", "", err
+	}
+
+	return routing.ResolveBeadsDirForRig(rigName, townBeadsDir)
+}
+
 func resolveConfiguredPrefix(ctx context.Context, daemonClient *rpc.Client, store storage.Storage) string {
 	// Database config takes precedence over config.yaml.
 	if daemonClient != nil {

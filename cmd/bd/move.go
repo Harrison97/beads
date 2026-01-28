@@ -78,16 +78,10 @@ Examples:
 			fmt.Fprintf(os.Stderr, "%s Source issue %s is ephemeral (wisp). Moving ephemeral issues may not be appropriate.\n", ui.RenderWarn("⚠"), resolvedSourceID)
 		}
 
-		// Step 2: Find the town-level beads directory
-		townBeadsDir, err := townBeadsDirFromCwd()
+		// Step 2: Resolve the target rig's beads directory
+		targetBeadsDir, targetPrefix, err := resolveTargetRigBeadsDir(targetRig)
 		if err != nil {
 			FatalError("cannot move: %v", err)
-		}
-
-		// Step 3: Resolve the target rig's beads directory
-		targetBeadsDir, targetPrefix, err := routing.ResolveBeadsDirForRig(targetRig, townBeadsDir)
-		if err != nil {
-			FatalError("%v", err)
 		}
 
 		// Check we're not moving to the same rig

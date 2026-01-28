@@ -118,19 +118,6 @@ func getLocalIssue(ctx context.Context, localStore storage.Storage, id string, r
 	}, err
 }
 
-// getRoutedStoreForID returns a storage connection for an issue ID if routing is needed.
-// Returns nil if no routing is needed (issue should be in local store).
-// The caller is responsible for closing the returned storage.
-func getRoutedStoreForID(ctx context.Context, id string) (*routing.RoutedStorage, error) {
-	if dbPath == "" {
-		return nil, nil
-	}
-
-	beadsDir := filepath.Dir(dbPath)
-	// Use GetRoutedStorageWithOpener with factory to respect backend configuration (bd-m2jr)
-	return routing.GetRoutedStorageWithOpener(ctx, id, beadsDir, factory.NewFromConfig)
-}
-
 // needsRouting checks if an ID would be routed to a different beads directory.
 // This is used to decide whether to bypass the daemon for cross-repo lookups.
 func needsRouting(id string) bool {

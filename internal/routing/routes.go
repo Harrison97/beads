@@ -34,6 +34,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -45,6 +46,9 @@ import (
 
 // RoutesFileName is the name of the routes configuration file
 const RoutesFileName = "routes.jsonl"
+
+// ErrNoRoutes indicates that no routes.jsonl was found in any parent .beads directory.
+var ErrNoRoutes = errors.New("no routes.jsonl found in any parent .beads directory")
 
 // Route represents a prefix-to-path routing rule
 type Route struct {
@@ -141,13 +145,13 @@ func FindTownBeadsDir(currentBeadsDir string) (string, error) {
 
 	townRoot := resolveTownRoot(currentBeadsDir)
 	if townRoot == "" {
-		return "", fmt.Errorf("no routes.jsonl found in any parent .beads directory")
+		return "", ErrNoRoutes
 	}
 
 	townBeadsDir := filepath.Join(townRoot, ".beads")
 	routes, err = LoadRoutes(townBeadsDir)
 	if err != nil || len(routes) == 0 {
-		return "", fmt.Errorf("no routes.jsonl found in any parent .beads directory")
+		return "", ErrNoRoutes
 	}
 
 	return townBeadsDir, nil
@@ -191,6 +195,24 @@ func ExtractProjectFromPath(path string) string {
 		return parts[0]
 	}
 	return ""
+}
+
+func resolveTargetPathForRoute(route Route, townRoot string, allowDotPath bool) (string, bool) {
+	if route.Path == "" {
+		return "", false
+	}
+	if route.Path == "." && !allowDotPath {
+		return "", false
+	}
+
+	var targetPath string
+	if route.Path == "." {
+		targetPath = filepath.Join(townRoot, ".beads")
+	} else {
+		targetPath = filepath.Join(townRoot, route.Path, ".beads")
+	}
+
+	return resolveRedirect(targetPath), true
 }
 
 // LookupRigByName finds a route by rig name (first path component).
@@ -277,18 +299,10 @@ func ResolveBeadsDirForRig(rigOrPrefix, currentBeadsDir string) (beadsDir string
 		return "", "", fmt.Errorf("rig or prefix %q not found in routes.jsonl", rigOrPrefix)
 	}
 
-	// Resolve the target beads directory
-	var targetPath string
-	if route.Path == "." {
-		// Special case: "." means the town beads directory
-		targetPath = filepath.Join(townRoot, ".beads")
-	} else {
-		// Normal path resolution relative to town root
-		targetPath = filepath.Join(townRoot, route.Path, ".beads")
+	targetPath, ok := resolveTargetPathForRoute(route, townRoot, true)
+	if !ok {
+		return "", "", fmt.Errorf("rig or prefix %q not found in routes.jsonl", rigOrPrefix)
 	}
-
-	// Follow redirect if present
-	targetPath = resolveRedirect(targetPath)
 
 	// Verify the target exists
 	if info, statErr := os.Stat(targetPath); statErr != nil || !info.IsDir() {
@@ -355,18 +369,10 @@ func ResolveBeadsDirForID(ctx context.Context, id, currentBeadsDir string) (stri
 		if prefix != "" {
 			for _, route := range routes {
 				if route.Prefix == prefix {
-					// Found a matching route - resolve the path
-					var targetPath string
-					if route.Path == "." {
-						// Special case: "." means the town beads directory
-						targetPath = filepath.Join(townRoot, ".beads")
-					} else {
-						// Normal path resolution relative to town root
-						targetPath = filepath.Join(townRoot, route.Path, ".beads")
+					targetPath, ok := resolveTargetPathForRoute(route, townRoot, true)
+					if !ok {
+						continue
 					}
-
-					// Follow redirect if present
-					targetPath = resolveRedirect(targetPath)
 
 					// Verify the target exists
 					if info, err := os.Stat(targetPath); err == nil && info.IsDir() {
@@ -573,21 +579,11 @@ func ResolveRigForPrefix(currentBeadsDir, prefix string, allowDotPath bool) (rig
 	if targetRoute == nil {
 		return "", false, nil
 	}
-	if targetRoute.Path == "" {
+
+	targetPath, ok := resolveTargetPathForRoute(*targetRoute, townRoot, allowDotPath)
+	if !ok {
 		return "", false, nil
 	}
-	if targetRoute.Path == "." && !allowDotPath {
-		return "", false, nil
-	}
-
-	var targetPath string
-	if targetRoute.Path == "." {
-		targetPath = filepath.Join(townRoot, ".beads")
-	} else {
-		targetPath = filepath.Join(townRoot, targetRoute.Path, ".beads")
-	}
-
-	targetPath = resolveRedirect(targetPath)
 
 	currentAbs, err := filepath.Abs(currentBeadsDir)
 	if err != nil {
