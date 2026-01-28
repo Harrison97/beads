@@ -79,7 +79,7 @@ Examples:
 		}
 
 		// Step 2: Find the town-level beads directory
-		townBeadsDir, err := findTownBeadsDir()
+		townBeadsDir, err := townBeadsDirFromCwd()
 		if err != nil {
 			FatalError("cannot move: %v", err)
 		}

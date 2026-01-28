@@ -567,8 +567,8 @@ type rigDaemon struct {
 func discoverRigDaemons() []rigDaemon {
 	var daemons []rigDaemon
 
-	// Find town beads directory (uses findTownBeadsDir from create.go)
-	townBeadsDir, err := findTownBeadsDir()
+	// Find town beads directory
+	townBeadsDir, err := townBeadsDirFromCwd()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: not in an orchestrator environment (%v)\n", err)
 		os.Exit(1)

@@ -260,7 +260,7 @@ var createCmd = &cobra.Command{
 				var currentBeadsDir string
 				if dbPath != "" {
 					currentBeadsDir = filepath.Dir(dbPath)
-				} else if beadsDir, err := findTownBeadsDir(); err == nil {
+				} else if beadsDir, err := townBeadsDirFromCwd(); err == nil {
 					currentBeadsDir = beadsDir
 				}
 
@@ -926,7 +926,7 @@ func createInRig(cmd *cobra.Command, rigName, explicitID, title, description, is
 	ctx := rootCtx
 
 	// Find the town-level beads directory (where routes.jsonl lives)
-	townBeadsDir, err := findTownBeadsDir()
+	townBeadsDir, err := townBeadsDirFromCwd()
 	if err != nil {
 		FatalError("cannot use --rig: %v", err)
 	}
@@ -1050,19 +1050,6 @@ func createInRig(cmd *cobra.Command, rigName, explicitID, title, description, is
 		fmt.Printf("  Priority: P%d\n", issue.Priority)
 		fmt.Printf("  Status: %s\n", issue.Status)
 	}
-}
-
-// findTownBeadsDir finds the town-level .beads directory (where routes.jsonl lives).
-// It walks up from the current directory looking for a .beads directory with routes.jsonl.
-func findTownBeadsDir() (string, error) {
-	// Start from current directory and walk up
-	dir, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-
-	beadsDir := filepath.Join(dir, ".beads")
-	return routing.FindTownBeadsDir(beadsDir)
 }
 
 func resolveConfiguredPrefix(ctx context.Context, daemonClient *rpc.Client, store storage.Storage) string {
