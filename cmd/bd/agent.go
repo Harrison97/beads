@@ -426,6 +426,9 @@ func runAgentShow(cmd *cobra.Command, args []string) error {
 	if notFound {
 		return fmt.Errorf("agent bead not found: %s", agentArg)
 	}
+	if routedResult != nil && routedResult.Routed {
+		defer routedResult.Close()
+	}
 
 	// Get agent bead
 	var agent *types.Issue
