@@ -165,6 +165,22 @@ func ExtractPrefix(id string) string {
 	return id[:idx+1] // Include the hyphen
 }
 
+// NormalizePrefix trims a trailing hyphen to normalize comparisons.
+func NormalizePrefix(prefix string) string {
+	return strings.TrimSuffix(prefix, "-")
+}
+
+// PrefixesEqual compares two prefixes, ignoring a trailing hyphen.
+// Returns false if either prefix is empty after normalization.
+func PrefixesEqual(a, b string) bool {
+	na := NormalizePrefix(a)
+	nb := NormalizePrefix(b)
+	if na == "" || nb == "" {
+		return false
+	}
+	return na == nb
+}
+
 // ExtractProjectFromPath extracts the project name from a route path.
 // For "beads/mayor/rig", returns "beads".
 // For "project/crew/max", returns "project".

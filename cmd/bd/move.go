@@ -92,7 +92,7 @@ Examples:
 
 		// Check we're not moving to the same rig
 		sourcePrefix := routing.ExtractPrefix(resolvedSourceID)
-		if sourcePrefix == targetPrefix {
+		if routing.PrefixesEqual(sourcePrefix, targetPrefix) {
 			FatalError("source issue %s is already in rig %q", resolvedSourceID, targetRig)
 		}
 

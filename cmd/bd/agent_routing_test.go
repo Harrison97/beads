@@ -75,15 +75,7 @@ func TestAgentStateWithRouting(t *testing.T) {
 	dbPath = townDBPath
 	t.Cleanup(func() { dbPath = oldDbPath })
 
-	// Change to tmpDir so routing can find town root via CWD
-	oldWd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Failed to get working directory: %v", err)
-	}
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatalf("Failed to change to temp directory: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(oldWd) })
+	// No need to change CWD; routing falls back to currentBeadsDir when CWD isn't in a town.
 
 	// Test the routed resolution
 	result, err := resolveAndGetIssueWithRouting(ctx, townStore, "gt-testrig-polecat-test")
@@ -181,15 +173,7 @@ func TestAgentHeartbeatWithRouting(t *testing.T) {
 	dbPath = townDBPath
 	t.Cleanup(func() { dbPath = oldDbPath })
 
-	// Change to tmpDir so routing can find town root via CWD
-	oldWd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Failed to get working directory: %v", err)
-	}
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatalf("Failed to change to temp directory: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(oldWd) })
+	// No need to change CWD; routing falls back to currentBeadsDir when CWD isn't in a town.
 
 	// Test that we can resolve the agent from the town directory
 	result, err := resolveAndGetIssueWithRouting(ctx, townStore, "gt-test-witness")
@@ -267,15 +251,7 @@ func TestAgentShowWithRouting(t *testing.T) {
 	dbPath = townDBPath
 	t.Cleanup(func() { dbPath = oldDbPath })
 
-	// Change to tmpDir so routing can find town root via CWD
-	oldWd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Failed to get working directory: %v", err)
-	}
-	if err := os.Chdir(tmpDir); err != nil {
-		t.Fatalf("Failed to change to temp directory: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(oldWd) })
+	// No need to change CWD; routing falls back to currentBeadsDir when CWD isn't in a town.
 
 	// Test that we can resolve the agent from the town directory
 	result, err := resolveAndGetIssueWithRouting(ctx, townStore, "gt-myrig-crew-alice")
