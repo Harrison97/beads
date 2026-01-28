@@ -255,28 +255,83 @@ var createCmd = &cobra.Command{
 			return
 		}
 
-		// Auto-route based on explicit ID prefix (if no explicit --rig/--prefix provided)
-		// When creating an issue with --id=pq-xxx, automatically route to the database
-		// that handles the pq- prefix based on routes.jsonl
-		if explicitID != "" && rigOverride == "" && prefixOverride == "" {
-			prefix := routing.ExtractPrefix(explicitID)
-			if prefix != "" {
-				// Load routes from town level
-				townBeadsDir, err := findTownBeadsDir()
-				if err == nil {
-					routes, err := routing.LoadTownRoutes(townBeadsDir)
-					if err == nil && len(routes) > 0 {
-						// Check if this prefix matches a route to a different rig
-						for _, route := range routes {
-							if route.Prefix == prefix && route.Path != "" && route.Path != "." {
-								// Found a matching route - auto-route to that rig
-								rigName := routing.ExtractProjectFromPath(route.Path)
-								if rigName != "" {
-									createInRig(cmd, rigName, explicitID, title, description, issueType, priority, design, acceptance, notes, assignee, labels, externalRef, wisp)
-									return
+		if !cmd.Flags().Changed("repo") {
+			// Auto-route based on explicit ID prefix (if no explicit --rig/--prefix provided)
+			// When creating an issue with --id=pq-xxx, automatically route to the database
+			// that handles the pq- prefix based on routes.jsonl
+			if explicitID != "" && rigOverride == "" && prefixOverride == "" {
+				prefix := routing.ExtractPrefix(explicitID)
+				if prefix != "" {
+					// Load routes from town level
+					townBeadsDir, err := findTownBeadsDir()
+					if err == nil {
+						routes, err := routing.LoadTownRoutes(townBeadsDir)
+						if err == nil && len(routes) > 0 {
+							// Check if this prefix matches a route to a different rig
+							for _, route := range routes {
+								if route.Prefix == prefix && route.Path != "" && route.Path != "." {
+									// Found a matching route - auto-route to that rig
+									rigName := routing.ExtractProjectFromPath(route.Path)
+									if rigName != "" {
+										createInRig(cmd, rigName, explicitID, title, description, issueType, priority, design, acceptance, notes, assignee, labels, externalRef, wisp)
+										return
+									}
 								}
 							}
 						}
+					}
+				}
+			}
+
+			// Auto-detect target rig based on configured prefix (if no explicit routing provided)
+			// This enables transparent cross-database creation: if config says prefix is "gt-"
+			// but routes.jsonl says gt- beads live in a different rig, auto-route there.
+			if rigOverride == "" && prefixOverride == "" && dbPath != "" {
+				// Get the configured prefix (database config takes precedence over config.yaml)
+				// Check both "issue-prefix" (user-facing) and "issue_prefix" (internal) keys
+				var configuredPrefix string
+				if daemonClient != nil {
+					// Daemon mode - query via RPC (try both keys)
+					resp, err := daemonClient.GetConfig(&rpc.GetConfigArgs{Key: "issue-prefix"})
+					if err == nil && resp.Value != "" {
+						configuredPrefix = resp.Value
+					}
+					if configuredPrefix == "" {
+						resp, err = daemonClient.GetConfig(&rpc.GetConfigArgs{Key: "issue_prefix"})
+						if err == nil && resp.Value != "" {
+							configuredPrefix = resp.Value
+						}
+					}
+				}
+				if configuredPrefix == "" && store != nil {
+					// Direct mode - check database (try both keys) then config.yaml
+					dbPrefix, _ := store.GetConfig(rootCtx, "issue-prefix")
+					if dbPrefix != "" {
+						configuredPrefix = dbPrefix
+					} else {
+						dbPrefix, _ = store.GetConfig(rootCtx, "issue_prefix")
+						if dbPrefix != "" {
+							configuredPrefix = dbPrefix
+						} else {
+							configuredPrefix = config.GetString("issue-prefix")
+						}
+					}
+				}
+				if configuredPrefix == "" {
+					configuredPrefix = config.GetString("issue-prefix")
+				}
+
+				if configuredPrefix != "" {
+					currentBeadsDir := filepath.Dir(dbPath)
+					autoRig, shouldRoute, err := routing.AutoDetectTargetRig(currentBeadsDir, configuredPrefix)
+					if err != nil {
+						debug.Logf("Warning: auto-routing detection failed: %v\n", err)
+					} else if shouldRoute && autoRig != "" {
+						if os.Getenv("BD_DEBUG_ROUTING") != "" {
+							fmt.Fprintf(os.Stderr, "[routing] Auto-routing to rig %q based on prefix %q (from database config)\n", autoRig, configuredPrefix)
+						}
+						createInRig(cmd, autoRig, explicitID, title, description, issueType, priority, design, acceptance, notes, assignee, labels, externalRef, wisp)
+						return
 					}
 				}
 			}

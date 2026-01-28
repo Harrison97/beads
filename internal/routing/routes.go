@@ -1,3 +1,34 @@
+// Package routing provides prefix-based routing for multi-repository beads setups.
+//
+// # Gas Town Architecture
+//
+// "Gas Town" is the terminology used for a multi-repository setup where multiple
+// independent projects ("rigs") are orchestrated under a single "town" root directory.
+// Each rig maintains its own .beads directory with its own database, but they share
+// a common routes.jsonl configuration at the town level for cross-rig references.
+//
+// Example Gas Town structure:
+//
+//	~/gastown/                    # Town root (contains mayor/town.json)
+//	├── mayor/
+//	│   └── town.json             # Town configuration
+//	├── .beads/
+//	│   └── routes.jsonl          # Routing configuration
+//	├── project-a/                # Rig with prefix "pa-"
+//	│   └── .beads/
+//	└── project-b/                # Rig with prefix "pb-"
+//	    └── .beads/
+//
+// The routes.jsonl file maps prefixes to rig paths:
+//
+//	{"prefix": "pa-", "path": "project-a"}
+//	{"prefix": "pb-", "path": "project-b"}
+//
+// # Symlink Handling
+//
+// The routing system correctly handles symlinked .beads directories. When .beads
+// is a symlink, functions like findTownRootFromCWD use the current working directory
+// rather than the resolved symlink path to determine the actual town root.
 package routing
 
 import (
@@ -26,18 +57,33 @@ type Route struct {
 // Returns an empty slice if the file doesn't exist.
 func LoadRoutes(beadsDir string) ([]Route, error) {
 	routesPath := filepath.Join(beadsDir, RoutesFileName)
+	debugRouting := os.Getenv("BD_DEBUG_ROUTING") != ""
+
+	if debugRouting {
+		fmt.Fprintf(os.Stderr, "[routing] LoadRoutes: loading from %s\n", routesPath)
+	}
+
 	file, err := os.Open(routesPath) //nolint:gosec // routesPath is constructed from known beadsDir
 	if err != nil {
 		if os.IsNotExist(err) {
+			if debugRouting {
+				fmt.Fprintf(os.Stderr, "[routing] LoadRoutes: file does not exist (not an error)\n")
+			}
 			return nil, nil // No routes file is not an error
+		}
+		if debugRouting {
+			fmt.Fprintf(os.Stderr, "[routing] LoadRoutes: failed to open file: %v\n", err)
 		}
 		return nil, err
 	}
 	defer file.Close()
 
 	var routes []Route
+	var lineNum int
+	var skippedLines int
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
+		lineNum++
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue // Skip empty lines and comments
@@ -45,11 +91,30 @@ func LoadRoutes(beadsDir string) ([]Route, error) {
 
 		var route Route
 		if err := json.Unmarshal([]byte(line), &route); err != nil {
-			continue // Skip malformed lines
+			if debugRouting {
+				fmt.Fprintf(os.Stderr, "[routing] LoadRoutes: skipping malformed line %d: %s (error: %v)\n", lineNum, line, err)
+			}
+			skippedLines++
+			continue
 		}
 		if route.Prefix != "" && route.Path != "" {
 			routes = append(routes, route)
+		} else if debugRouting {
+			fmt.Fprintf(os.Stderr, "[routing] LoadRoutes: skipping line %d with empty prefix or path: %s\n", lineNum, line)
+			skippedLines++
 		}
+	}
+
+	if debugRouting {
+		fmt.Fprintf(os.Stderr, "[routing] LoadRoutes: parsed %d valid routes, skipped %d lines\n", len(routes), skippedLines)
+	}
+
+	// Warn if routes.jsonl exists but has no valid routes after parsing
+	// This catches completely broken configs without being noisy for minor issues.
+	// Can be disabled with BD_QUIET_ROUTING=1.
+	if skippedLines > 0 && len(routes) == 0 && os.Getenv("BD_QUIET_ROUTING") == "" {
+		fmt.Fprintf(os.Stderr, "warning: %s has %d malformed line(s) and no valid routes\n", routesPath, skippedLines)
+		fmt.Fprintf(os.Stderr, "  hint: set BD_DEBUG_ROUTING=1 for details, or BD_QUIET_ROUTING=1 to suppress this warning\n")
 	}
 
 	return routes, scanner.Err()
@@ -80,6 +145,10 @@ func ExtractPrefix(id string) string {
 // ExtractProjectFromPath extracts the project name from a route path.
 // For "beads/mayor/rig", returns "beads".
 // For "gastown/crew/max", returns "gastown".
+//
+// Special case: For path ".", returns "." (not empty string). This allows
+// routes to use "." to indicate the town root's beads directory rather than
+// a subdirectory, which is useful when the town root itself is a rig.
 func ExtractProjectFromPath(path string) string {
 	// Get the first component of the path
 	parts := strings.Split(path, "/")
@@ -302,15 +371,35 @@ func findTownRoot(startDir string) string {
 }
 
 // findTownRootFromCWD walks up from the current working directory looking for a town root.
-// This is used to handle symlinked .beads directories correctly.
+//
+// This function is critical for handling symlinked .beads directories correctly.
 // By starting from CWD instead of the beads directory path, we find the correct
 // town root even when .beads is a symlink that points elsewhere.
+//
+// Example: If ~/gt/.beads is a symlink to ~/gt/olympus/.beads:
+//   - CWD is ~/gt/myrig
+//   - currentBeadsDir resolves to ~/gt/olympus/.beads (following symlink)
+//   - Walking up from currentBeadsDir would incorrectly find ~/gt/olympus as town root
+//   - Walking up from CWD correctly finds ~/gt as town root
+//
+// This function depends on the current working directory, so callers must ensure
+// they are running from a directory within the Gas Town structure.
 func findTownRootFromCWD() string {
 	cwd, err := os.Getwd()
 	if err != nil {
+		if os.Getenv("BD_DEBUG_ROUTING") != "" {
+			fmt.Fprintf(os.Stderr, "[routing] findTownRootFromCWD: os.Getwd() failed: %v\n", err)
+		}
 		return ""
 	}
-	return findTownRoot(cwd)
+	if os.Getenv("BD_DEBUG_ROUTING") != "" {
+		fmt.Fprintf(os.Stderr, "[routing] findTownRootFromCWD: starting from %s\n", cwd)
+	}
+	root := findTownRoot(cwd)
+	if os.Getenv("BD_DEBUG_ROUTING") != "" {
+		fmt.Fprintf(os.Stderr, "[routing] findTownRootFromCWD: found root=%s\n", root)
+	}
+	return root
 }
 
 // findTownRoutes searches for routes.jsonl at the town level.
@@ -348,6 +437,13 @@ func findTownRoutes(currentBeadsDir string) ([]Route, string) {
 	// Walk up from CWD to find town root
 	townRoot := findTownRootFromCWD()
 	if townRoot == "" {
+		// Fallback: use currentBeadsDir if CWD isn't inside a town
+		townRoot = findTownRoot(currentBeadsDir)
+		if os.Getenv("BD_DEBUG_ROUTING") != "" {
+			fmt.Fprintf(os.Stderr, "[routing] findTownRoutes: fallback townRoot=%s from currentBeadsDir=%s\n", townRoot, currentBeadsDir)
+		}
+	}
+	if townRoot == "" {
 		return nil, "" // Not in a town
 	}
 
@@ -363,6 +459,96 @@ func findTownRoutes(currentBeadsDir string) ([]Route, string) {
 	}
 
 	return routes, townRoot
+}
+
+// AutoDetectTargetRig determines if the current beads directory should route
+// creations to a different rig based on its configured prefix and routes.jsonl.
+//
+// This enables transparent cross-database creation: if you're in a context with
+// prefix "gt-" but routes.jsonl says gt- beads live elsewhere, creation will
+// automatically route there.
+//
+// Returns:
+//   - rigName: the target rig name to route to (empty if no routing needed)
+//   - shouldRoute: true if creation should be routed to a different location
+//   - err: any error encountered
+func AutoDetectTargetRig(currentBeadsDir, configuredPrefix string) (rigName string, shouldRoute bool, err error) {
+	if os.Getenv("BD_DEBUG_ROUTING") != "" {
+		fmt.Fprintf(os.Stderr, "[routing] AutoDetectTargetRig called: beadsDir=%s, prefix=%s\n", currentBeadsDir, configuredPrefix)
+	}
+
+	if configuredPrefix == "" {
+		return "", false, nil // No prefix configured, no routing needed
+	}
+
+	// Normalize prefix (add hyphen if missing)
+	if !strings.HasSuffix(configuredPrefix, "-") {
+		configuredPrefix += "-"
+	}
+
+	if os.Getenv("BD_DEBUG_ROUTING") != "" {
+		fmt.Fprintf(os.Stderr, "[routing] Normalized prefix: %s\n", configuredPrefix)
+	}
+
+	// Load routes from town level
+	routes, townRoot := findTownRoutes(currentBeadsDir)
+	if os.Getenv("BD_DEBUG_ROUTING") != "" {
+		fmt.Fprintf(os.Stderr, "[routing] Found %d routes, townRoot=%s\n", len(routes), townRoot)
+	}
+	if len(routes) == 0 {
+		return "", false, nil // No routes file, no routing needed
+	}
+
+	// Find the route for this prefix
+	var targetRoute *Route
+	for i, route := range routes {
+		if route.Prefix == configuredPrefix {
+			targetRoute = &routes[i]
+			break
+		}
+	}
+
+	if targetRoute == nil {
+		return "", false, nil // Prefix not in routes, no routing needed
+	}
+
+	// Resolve where this prefix SHOULD live
+	var targetPath string
+	if targetRoute.Path == "." {
+		targetPath = filepath.Join(townRoot, ".beads")
+	} else {
+		targetPath = filepath.Join(townRoot, targetRoute.Path, ".beads")
+	}
+
+	// Follow redirects
+	targetPath = resolveRedirect(targetPath)
+
+	// Normalize paths for comparison
+	currentAbs, err := filepath.Abs(currentBeadsDir)
+	if err != nil {
+		currentAbs = currentBeadsDir
+	}
+	targetAbs, err := filepath.Abs(targetPath)
+	if err != nil {
+		targetAbs = targetPath
+	}
+
+	// If we're already in the right place, no routing needed
+	if currentAbs == targetAbs {
+		return "", false, nil
+	}
+
+	// We need to route to the rig that owns this prefix.
+	// Return the prefix itself as the identifier - createInRig and ResolveBeadsDirForRig
+	// are designed to handle prefixes and will look up the correct route.
+	rigName = strings.TrimSuffix(configuredPrefix, "-")
+
+	if os.Getenv("BD_DEBUG_ROUTING") != "" {
+		fmt.Fprintf(os.Stderr, "[routing] AutoDetect: prefix %s should route from %s -> %s (identifier=%s)\n",
+			configuredPrefix, currentAbs, targetAbs, rigName)
+	}
+
+	return rigName, true, nil
 }
 
 // resolveRedirect checks for a redirect file in the beads directory
