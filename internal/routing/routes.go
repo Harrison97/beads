@@ -1,15 +1,14 @@
 // Package routing provides prefix-based routing for multi-repository beads setups.
 //
-// # Gas Town Architecture
+// # Multi-repo Architecture
 //
-// "Gas Town" is the terminology used for a multi-repository setup where multiple
-// independent projects ("rigs") are orchestrated under a single "town" root directory.
-// Each rig maintains its own .beads directory with its own database, but they share
-// a common routes.jsonl configuration at the town level for cross-rig references.
+// A multi-repo setup allows multiple independent projects to share a single
+// town root directory. Each repo maintains its own .beads directory with its own
+// database, while a shared routes.jsonl at the town level enables cross-repo references.
 //
-// Example Gas Town structure:
+// Example structure:
 //
-//	~/gastown/                    # Town root (contains mayor/town.json)
+//	~/town/                       # Town root (contains mayor/town.json)
 //	├── mayor/
 //	│   └── town.json             # Town configuration
 //	├── .beads/
@@ -122,12 +121,36 @@ func LoadRoutes(beadsDir string) ([]Route, error) {
 
 // LoadTownRoutes loads routes from the town-level routes.jsonl.
 // It first checks the given beadsDir, then walks up to find the town root
-// and loads routes from there. This is useful for multi-rig setups (Gas Town)
-// where routes.jsonl lives at ~/gt/.beads/ rather than in individual rig directories.
+// and loads routes from there. This is useful for multi-repo setups where
+// routes.jsonl lives at the town root rather than in individual repo directories.
 // Returns routes and nil error on success, or nil routes if not in a town or no routes found.
 func LoadTownRoutes(beadsDir string) ([]Route, error) {
 	routes, _ := findTownRoutes(beadsDir)
 	return routes, nil
+}
+
+// FindTownBeadsDir locates the town-level .beads directory that owns routes.jsonl.
+// It first checks currentBeadsDir, then walks up to the town root and checks there.
+// Returns the directory containing routes.jsonl or an error if none is found.
+func FindTownBeadsDir(currentBeadsDir string) (string, error) {
+	// First try the current beads dir (works if we're already at town level)
+	routes, err := LoadRoutes(currentBeadsDir)
+	if err == nil && len(routes) > 0 {
+		return currentBeadsDir, nil
+	}
+
+	townRoot := resolveTownRoot(currentBeadsDir)
+	if townRoot == "" {
+		return "", fmt.Errorf("no routes.jsonl found in any parent .beads directory")
+	}
+
+	townBeadsDir := filepath.Join(townRoot, ".beads")
+	routes, err = LoadRoutes(townBeadsDir)
+	if err != nil || len(routes) == 0 {
+		return "", fmt.Errorf("no routes.jsonl found in any parent .beads directory")
+	}
+
+	return townBeadsDir, nil
 }
 
 // ExtractPrefix extracts the prefix from an issue ID.
@@ -144,7 +167,7 @@ func ExtractPrefix(id string) string {
 
 // ExtractProjectFromPath extracts the project name from a route path.
 // For "beads/mayor/rig", returns "beads".
-// For "gastown/crew/max", returns "gastown".
+// For "project/crew/max", returns "project".
 //
 // Special case: For path ".", returns "." (not empty string). This allows
 // routes to use "." to indicate the town root's beads directory rather than
@@ -224,7 +247,7 @@ func lookupRigForgivingWithTown(input, beadsDir string) (Route, string, bool) {
 // This is used by --rig and --prefix flags to create issues in a different rig.
 //
 // The input is forgiving - accepts any of:
-//   - "beads", "gastown" (rig names)
+//   - "beads", "project-a" (repo names)
 //   - "bd-", "gt-" (exact prefixes)
 //   - "bd", "gt" (prefixes without hyphen)
 //
@@ -352,6 +375,39 @@ func ResolveBeadsDirForID(ctx context.Context, id, currentBeadsDir string) (stri
 	return currentBeadsDir, false, nil
 }
 
+// CreateRouteDecision describes where a create should be routed.
+type CreateRouteDecision struct {
+	Rig    string
+	Reason string
+}
+
+// ResolveCreateRoute determines if a create should be routed based on explicit ID
+// prefix or configured prefix. Explicit ID routing is checked first.
+func ResolveCreateRoute(currentBeadsDir, explicitID, configuredPrefix string) (CreateRouteDecision, bool, error) {
+	if explicitID != "" {
+		prefix := ExtractPrefix(explicitID)
+		rig, shouldRoute, err := ResolveRigForPrefix(currentBeadsDir, prefix, false)
+		if err != nil {
+			return CreateRouteDecision{}, false, err
+		}
+		if shouldRoute {
+			return CreateRouteDecision{Rig: rig, Reason: "explicit-id"}, true, nil
+		}
+	}
+
+	if configuredPrefix != "" {
+		rig, shouldRoute, err := ResolveRigForPrefix(currentBeadsDir, configuredPrefix, true)
+		if err != nil {
+			return CreateRouteDecision{}, false, err
+		}
+		if shouldRoute {
+			return CreateRouteDecision{Rig: rig, Reason: "configured-prefix"}, true, nil
+		}
+	}
+
+	return CreateRouteDecision{}, false, nil
+}
+
 // findTownRoot walks up from startDir looking for a town root.
 // Returns the town root path, or empty string if not found.
 // A town root is identified by the presence of mayor/town.json.
@@ -376,14 +432,14 @@ func findTownRoot(startDir string) string {
 // By starting from CWD instead of the beads directory path, we find the correct
 // town root even when .beads is a symlink that points elsewhere.
 //
-// Example: If ~/gt/.beads is a symlink to ~/gt/olympus/.beads:
-//   - CWD is ~/gt/myrig
-//   - currentBeadsDir resolves to ~/gt/olympus/.beads (following symlink)
-//   - Walking up from currentBeadsDir would incorrectly find ~/gt/olympus as town root
-//   - Walking up from CWD correctly finds ~/gt as town root
+// Example: If ~/town/.beads is a symlink to ~/town/archive/.beads:
+//   - CWD is ~/town/project-a
+//   - currentBeadsDir resolves to ~/town/archive/.beads (following symlink)
+//   - Walking up from currentBeadsDir would incorrectly find ~/town/archive as town root
+//   - Walking up from CWD correctly finds ~/town as town root
 //
 // This function depends on the current working directory, so callers must ensure
-// they are running from a directory within the Gas Town structure.
+// they are running from a directory within the town structure.
 func findTownRootFromCWD() string {
 	cwd, err := os.Getwd()
 	if err != nil {
@@ -402,13 +458,25 @@ func findTownRootFromCWD() string {
 	return root
 }
 
+func resolveTownRoot(currentBeadsDir string) string {
+	townRoot := findTownRootFromCWD()
+	if townRoot == "" {
+		// Fallback: use currentBeadsDir if CWD isn't inside a town
+		townRoot = findTownRoot(currentBeadsDir)
+		if os.Getenv("BD_DEBUG_ROUTING") != "" {
+			fmt.Fprintf(os.Stderr, "[routing] resolveTownRoot: fallback townRoot=%s from currentBeadsDir=%s\n", townRoot, currentBeadsDir)
+		}
+	}
+	return townRoot
+}
+
 // findTownRoutes searches for routes.jsonl at the town level.
 // It walks up from currentBeadsDir to find the town root, then loads routes
 // from <townRoot>/.beads/routes.jsonl.
 // Returns (routes, townRoot). Returns nil routes if not in an orchestrator town or no routes found.
 //
 // IMPORTANT: This function handles symlinked .beads directories correctly.
-// When .beads is a symlink (e.g., ~/gt/.beads -> ~/gt/olympus/.beads), we must
+// When .beads is a symlink (e.g., ~/town/.beads -> ~/town/archive/.beads), we must
 // use findTownRoot() starting from CWD to determine the actual town root rather
 // than starting from currentBeadsDir, which may be the resolved symlink path.
 func findTownRoutes(currentBeadsDir string) ([]Route, string) {
@@ -417,9 +485,9 @@ func findTownRoutes(currentBeadsDir string) ([]Route, string) {
 	if err == nil && len(routes) > 0 {
 		// Use findTownRoot() starting from CWD to determine the actual town root.
 		// We must NOT use currentBeadsDir as the starting point because if .beads
-		// is a symlink (e.g., ~/gt/.beads -> ~/gt/olympus/.beads), currentBeadsDir
-		// will be the resolved path (e.g., ~/gt/olympus/.beads) and walking up
-		// from there would find ~/gt/olympus as the town root instead of ~/gt.
+		// is a symlink (e.g., ~/town/.beads -> ~/town/archive/.beads), currentBeadsDir
+		// will be the resolved path (e.g., ~/town/archive/.beads) and walking up
+		// from there would find ~/town/archive as the town root instead of ~/town.
 		townRoot := findTownRootFromCWD()
 		if townRoot != "" {
 			if os.Getenv("BD_DEBUG_ROUTING") != "" {
@@ -427,22 +495,15 @@ func findTownRoutes(currentBeadsDir string) ([]Route, string) {
 			}
 			return routes, townRoot
 		}
-		// Fallback to parent dir if not in a town structure (for non-Gas Town repos)
+		// Fallback to parent dir if not in a town structure (for standalone repos)
 		if os.Getenv("BD_DEBUG_ROUTING") != "" {
 			fmt.Fprintf(os.Stderr, "[routing] findTownRoutes: found routes in %s, townRoot=%s (fallback to parent dir)\n", currentBeadsDir, filepath.Dir(currentBeadsDir))
 		}
 		return routes, filepath.Dir(currentBeadsDir)
 	}
 
-	// Walk up from CWD to find town root
-	townRoot := findTownRootFromCWD()
-	if townRoot == "" {
-		// Fallback: use currentBeadsDir if CWD isn't inside a town
-		townRoot = findTownRoot(currentBeadsDir)
-		if os.Getenv("BD_DEBUG_ROUTING") != "" {
-			fmt.Fprintf(os.Stderr, "[routing] findTownRoutes: fallback townRoot=%s from currentBeadsDir=%s\n", townRoot, currentBeadsDir)
-		}
-	}
+	// Walk up from CWD (with fallback to currentBeadsDir) to find town root
+	townRoot := resolveTownRoot(currentBeadsDir)
 	if townRoot == "" {
 		return nil, "" // Not in a town
 	}
@@ -461,58 +522,52 @@ func findTownRoutes(currentBeadsDir string) ([]Route, string) {
 	return routes, townRoot
 }
 
-// AutoDetectTargetRig determines if the current beads directory should route
-// creations to a different rig based on its configured prefix and routes.jsonl.
-//
-// This enables transparent cross-database creation: if you're in a context with
-// prefix "gt-" but routes.jsonl says gt- beads live elsewhere, creation will
-// automatically route there.
-//
-// Returns:
-//   - rigName: the target rig name to route to (empty if no routing needed)
-//   - shouldRoute: true if creation should be routed to a different location
-//   - err: any error encountered
-func AutoDetectTargetRig(currentBeadsDir, configuredPrefix string) (rigName string, shouldRoute bool, err error) {
+// ResolveRigForPrefix determines whether a prefix should route to a different repo.
+// If allowDotPath is false, routes that point to "." are ignored.
+func ResolveRigForPrefix(currentBeadsDir, prefix string, allowDotPath bool) (rigName string, shouldRoute bool, err error) {
 	if os.Getenv("BD_DEBUG_ROUTING") != "" {
-		fmt.Fprintf(os.Stderr, "[routing] AutoDetectTargetRig called: beadsDir=%s, prefix=%s\n", currentBeadsDir, configuredPrefix)
+		fmt.Fprintf(os.Stderr, "[routing] ResolveRigForPrefix called: beadsDir=%s, prefix=%s\n", currentBeadsDir, prefix)
 	}
 
-	if configuredPrefix == "" {
-		return "", false, nil // No prefix configured, no routing needed
+	if prefix == "" {
+		return "", false, nil
 	}
 
 	// Normalize prefix (add hyphen if missing)
-	if !strings.HasSuffix(configuredPrefix, "-") {
-		configuredPrefix += "-"
+	if !strings.HasSuffix(prefix, "-") {
+		prefix += "-"
 	}
 
 	if os.Getenv("BD_DEBUG_ROUTING") != "" {
-		fmt.Fprintf(os.Stderr, "[routing] Normalized prefix: %s\n", configuredPrefix)
+		fmt.Fprintf(os.Stderr, "[routing] Normalized prefix: %s\n", prefix)
 	}
 
-	// Load routes from town level
 	routes, townRoot := findTownRoutes(currentBeadsDir)
 	if os.Getenv("BD_DEBUG_ROUTING") != "" {
 		fmt.Fprintf(os.Stderr, "[routing] Found %d routes, townRoot=%s\n", len(routes), townRoot)
 	}
 	if len(routes) == 0 {
-		return "", false, nil // No routes file, no routing needed
+		return "", false, nil
 	}
 
-	// Find the route for this prefix
 	var targetRoute *Route
 	for i, route := range routes {
-		if route.Prefix == configuredPrefix {
+		if route.Prefix == prefix {
 			targetRoute = &routes[i]
 			break
 		}
 	}
 
 	if targetRoute == nil {
-		return "", false, nil // Prefix not in routes, no routing needed
+		return "", false, nil
+	}
+	if targetRoute.Path == "" {
+		return "", false, nil
+	}
+	if targetRoute.Path == "." && !allowDotPath {
+		return "", false, nil
 	}
 
-	// Resolve where this prefix SHOULD live
 	var targetPath string
 	if targetRoute.Path == "." {
 		targetPath = filepath.Join(townRoot, ".beads")
@@ -520,10 +575,8 @@ func AutoDetectTargetRig(currentBeadsDir, configuredPrefix string) (rigName stri
 		targetPath = filepath.Join(townRoot, targetRoute.Path, ".beads")
 	}
 
-	// Follow redirects
 	targetPath = resolveRedirect(targetPath)
 
-	// Normalize paths for comparison
 	currentAbs, err := filepath.Abs(currentBeadsDir)
 	if err != nil {
 		currentAbs = currentBeadsDir
@@ -533,19 +586,14 @@ func AutoDetectTargetRig(currentBeadsDir, configuredPrefix string) (rigName stri
 		targetAbs = targetPath
 	}
 
-	// If we're already in the right place, no routing needed
 	if currentAbs == targetAbs {
 		return "", false, nil
 	}
 
-	// We need to route to the rig that owns this prefix.
-	// Return the prefix itself as the identifier - createInRig and ResolveBeadsDirForRig
-	// are designed to handle prefixes and will look up the correct route.
-	rigName = strings.TrimSuffix(configuredPrefix, "-")
-
+	rigName = strings.TrimSuffix(prefix, "-")
 	if os.Getenv("BD_DEBUG_ROUTING") != "" {
-		fmt.Fprintf(os.Stderr, "[routing] AutoDetect: prefix %s should route from %s -> %s (identifier=%s)\n",
-			configuredPrefix, currentAbs, targetAbs, rigName)
+		fmt.Fprintf(os.Stderr, "[routing] ResolveRigForPrefix: %s -> %s (identifier=%s)\n",
+			currentAbs, targetAbs, rigName)
 	}
 
 	return rigName, true, nil

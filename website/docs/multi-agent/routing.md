@@ -139,7 +139,7 @@ This outputs:
 ```
 [routing] LoadRoutes: loading from /home/user/gt/.beads/routes.jsonl
 [routing] LoadRoutes: parsed 3 valid routes, skipped 0 lines
-[routing] AutoDetectTargetRig called: beadsDir=/home/user/gt/gastown/mayor/rig/.beads, prefix=gt-
+[routing] ResolveRigForPrefix called: beadsDir=/home/user/gt/gastown/mayor/rig/.beads, prefix=gt-
 [routing] Found 3 routes, townRoot=/home/user/gt
 ```
 

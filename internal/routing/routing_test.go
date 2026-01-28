@@ -820,7 +820,7 @@ func TestResolveBeadsDirForRig_Redirect(t *testing.T) {
 	}
 }
 
-func TestAutoDetectTargetRig(t *testing.T) {
+func TestResolveRigForPrefix(t *testing.T) {
 	tests := []struct {
 		name             string
 		setupFunc        func(t *testing.T) (beadsDir string, cleanup func())
@@ -986,17 +986,17 @@ func TestAutoDetectTargetRig(t *testing.T) {
 			beadsDir, cleanup := tt.setupFunc(t)
 			defer cleanup()
 
-			gotRig, gotShouldRoute, err := AutoDetectTargetRig(beadsDir, tt.configuredPrefix)
+			gotRig, gotShouldRoute, err := ResolveRigForPrefix(beadsDir, tt.configuredPrefix, true)
 
 			if (err != nil) != tt.wantErr {
-				t.Errorf("AutoDetectTargetRig() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("ResolveRigForPrefix() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 			if gotRig != tt.wantRig {
-				t.Errorf("AutoDetectTargetRig() gotRig = %v, want %v", gotRig, tt.wantRig)
+				t.Errorf("ResolveRigForPrefix() gotRig = %v, want %v", gotRig, tt.wantRig)
 			}
 			if gotShouldRoute != tt.wantShouldRoute {
-				t.Errorf("AutoDetectTargetRig() gotShouldRoute = %v, want %v", gotShouldRoute, tt.wantShouldRoute)
+				t.Errorf("ResolveRigForPrefix() gotShouldRoute = %v, want %v", gotShouldRoute, tt.wantShouldRoute)
 			}
 		})
 	}
