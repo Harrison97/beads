@@ -1052,34 +1052,6 @@ func createInRig(cmd *cobra.Command, rigName, explicitID, title, description, is
 	}
 }
 
-func resolveConfiguredPrefix(ctx context.Context, daemonClient *rpc.Client, store storage.Storage) string {
-	// Get the configured prefix (database config takes precedence over config.yaml)
-	// Check both "issue-prefix" (user-facing) and "issue_prefix" (internal) keys
-	if daemonClient != nil {
-		resp, err := daemonClient.GetConfig(&rpc.GetConfigArgs{Key: "issue-prefix"})
-		if err == nil && resp.Value != "" {
-			return resp.Value
-		}
-		resp, err = daemonClient.GetConfig(&rpc.GetConfigArgs{Key: "issue_prefix"})
-		if err == nil && resp.Value != "" {
-			return resp.Value
-		}
-	}
-
-	if store != nil {
-		dbPrefix, _ := store.GetConfig(ctx, "issue-prefix")
-		if dbPrefix != "" {
-			return dbPrefix
-		}
-		dbPrefix, _ = store.GetConfig(ctx, "issue_prefix")
-		if dbPrefix != "" {
-			return dbPrefix
-		}
-	}
-
-	return config.GetString("issue-prefix")
-}
-
 // formatTimeForRPC converts a *time.Time to RFC3339 string for daemon RPC calls.
 // Returns empty string if t is nil, allowing the daemon to distinguish "not set" from "set to zero".
 func formatTimeForRPC(t *time.Time) string {
