@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/steveyegge/beads/internal/config"
 	"github.com/steveyegge/beads/internal/rpc"
+	"github.com/steveyegge/beads/internal/storage"
 	"github.com/steveyegge/beads/internal/types"
 	"github.com/steveyegge/beads/internal/ui"
 )
@@ -129,6 +131,42 @@ func init() {
 	rootCmd.AddCommand(agentCmd)
 }
 
+func resolveAgentForRouting(ctx context.Context, agentArg string, localStore storage.Storage) (string, *RoutedResult, bool, error) {
+	if needsRouting(agentArg) || daemonClient == nil {
+		routedResult, err := resolveAndGetIssueWithRouting(ctx, localStore, agentArg)
+		if err != nil {
+			if routedResult != nil {
+				routedResult.Close()
+			}
+			if strings.Contains(err.Error(), "no issue found matching") {
+				return agentArg, nil, true, nil
+			}
+			return "", nil, false, fmt.Errorf("failed to resolve agent %s: %w", agentArg, err)
+		}
+		if routedResult == nil || routedResult.Issue == nil {
+			if routedResult != nil {
+				routedResult.Close()
+			}
+			return agentArg, nil, true, nil
+		}
+		return routedResult.ResolvedID, routedResult, false, nil
+	}
+
+	resp, err := daemonClient.ResolveID(&rpc.ResolveIDArgs{ID: agentArg})
+	if err != nil {
+		if strings.Contains(err.Error(), "no issue found matching") {
+			return agentArg, nil, true, nil
+		}
+		return "", nil, false, fmt.Errorf("failed to resolve agent %s: %w", agentArg, err)
+	}
+
+	var agentID string
+	if err := json.Unmarshal(resp.Data, &agentID); err != nil {
+		return "", nil, false, fmt.Errorf("parsing response: %w", err)
+	}
+	return agentID, nil, false, nil
+}
+
 func runAgentState(cmd *cobra.Command, args []string) error {
 	CheckReadonly("agent state")
 
@@ -147,50 +185,9 @@ func runAgentState(cmd *cobra.Command, args []string) error {
 	ctx := rootCtx
 
 	// Resolve agent ID with routing support - if not found, we'll auto-create the agent bead
-	var agentID string
-	var notFound bool
-	var routedResult *RoutedResult
-
-	// Check if routing is needed (bypass daemon for cross-repo lookups)
-	if needsRouting(agentArg) || daemonClient == nil {
-		// Use routed resolution for cross-repo lookups
-		var err error
-		routedResult, err = resolveAndGetIssueWithRouting(ctx, store, agentArg)
-		if err != nil {
-			if routedResult != nil {
-				routedResult.Close()
-			}
-			// Check if it's a "not found" error
-			if strings.Contains(err.Error(), "no issue found matching") {
-				notFound = true
-				agentID = agentArg // Use the input as the ID for creation
-			} else {
-				return fmt.Errorf("failed to resolve agent %s: %w", agentArg, err)
-			}
-		} else if routedResult != nil && routedResult.Issue != nil {
-			agentID = routedResult.ResolvedID
-		} else {
-			if routedResult != nil {
-				routedResult.Close()
-			}
-			notFound = true
-			agentID = agentArg
-		}
-	} else if daemonClient != nil {
-		resp, err := daemonClient.ResolveID(&rpc.ResolveIDArgs{ID: agentArg})
-		if err != nil {
-			// Check if it's a "not found" error
-			if strings.Contains(err.Error(), "no issue found matching") {
-				notFound = true
-				agentID = agentArg // Use the input as the ID for creation
-			} else {
-				return fmt.Errorf("failed to resolve agent %s: %w", agentArg, err)
-			}
-		} else {
-			if err := json.Unmarshal(resp.Data, &agentID); err != nil {
-				return fmt.Errorf("parsing response: %w", err)
-			}
-		}
+	agentID, routedResult, notFound, err := resolveAgentForRouting(ctx, agentArg, store)
+	if err != nil {
+		return err
 	}
 
 	// Determine which store to use (routed or local)
@@ -333,35 +330,12 @@ func runAgentHeartbeat(cmd *cobra.Command, args []string) error {
 	ctx := rootCtx
 
 	// Resolve agent ID with routing support
-	var agentID string
-	var routedResult *RoutedResult
-
-	// Check if routing is needed (bypass daemon for cross-repo lookups)
-	if needsRouting(agentArg) || daemonClient == nil {
-		// Use routed resolution for cross-repo lookups
-		var err error
-		routedResult, err = resolveAndGetIssueWithRouting(ctx, store, agentArg)
-		if err != nil {
-			if routedResult != nil {
-				routedResult.Close()
-			}
-			return fmt.Errorf("failed to resolve agent %s: %w", agentArg, err)
-		}
-		if routedResult == nil || routedResult.Issue == nil {
-			if routedResult != nil {
-				routedResult.Close()
-			}
-			return fmt.Errorf("agent bead not found: %s", agentArg)
-		}
-		agentID = routedResult.ResolvedID
-	} else if daemonClient != nil {
-		resp, err := daemonClient.ResolveID(&rpc.ResolveIDArgs{ID: agentArg})
-		if err != nil {
-			return fmt.Errorf("failed to resolve agent %s: %w", agentArg, err)
-		}
-		if err := json.Unmarshal(resp.Data, &agentID); err != nil {
-			return fmt.Errorf("parsing response: %w", err)
-		}
+	agentID, routedResult, notFound, err := resolveAgentForRouting(ctx, agentArg, store)
+	if err != nil {
+		return err
+	}
+	if notFound {
+		return fmt.Errorf("agent bead not found: %s", agentArg)
 	}
 
 	// Determine which store to use (routed or local)
@@ -445,36 +419,12 @@ func runAgentShow(cmd *cobra.Command, args []string) error {
 	ctx := rootCtx
 
 	// Resolve agent ID with routing support
-	var agentID string
-	var routedResult *RoutedResult
-
-	// Check if routing is needed (bypass daemon for cross-repo lookups)
-	if needsRouting(agentArg) || daemonClient == nil {
-		// Use routed resolution for cross-repo lookups
-		var err error
-		routedResult, err = resolveAndGetIssueWithRouting(ctx, store, agentArg)
-		if err != nil {
-			if routedResult != nil {
-				routedResult.Close()
-			}
-			return fmt.Errorf("failed to resolve agent %s: %w", agentArg, err)
-		}
-		if routedResult == nil || routedResult.Issue == nil {
-			if routedResult != nil {
-				routedResult.Close()
-			}
-			return fmt.Errorf("agent bead not found: %s", agentArg)
-		}
-		agentID = routedResult.ResolvedID
-		defer routedResult.Close()
-	} else if daemonClient != nil {
-		resp, err := daemonClient.ResolveID(&rpc.ResolveIDArgs{ID: agentArg})
-		if err != nil {
-			return fmt.Errorf("failed to resolve agent %s: %w", agentArg, err)
-		}
-		if err := json.Unmarshal(resp.Data, &agentID); err != nil {
-			return fmt.Errorf("parsing response: %w", err)
-		}
+	agentID, routedResult, notFound, err := resolveAgentForRouting(ctx, agentArg, store)
+	if err != nil {
+		return err
+	}
+	if notFound {
+		return fmt.Errorf("agent bead not found: %s", agentArg)
 	}
 
 	// Get agent bead
