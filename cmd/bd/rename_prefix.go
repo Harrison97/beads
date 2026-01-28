@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/steveyegge/beads/internal/routing"
 	"github.com/steveyegge/beads/internal/storage"
 	"github.com/steveyegge/beads/internal/storage/sqlite"
 	"github.com/steveyegge/beads/internal/syncbranch"
@@ -135,7 +136,7 @@ NOTE: This is a rare operation. Most users never need this command.`,
 			os.Exit(1)
 		}
 
-		newPrefix = strings.TrimRight(newPrefix, "-")
+		newPrefix = routing.NormalizePrefix(newPrefix)
 
 		// Check for multiple prefixes first
 		issues, err := store.SearchIssues(ctx, "", types.IssueFilter{})
@@ -188,7 +189,7 @@ NOTE: This is a rare operation. Most users never need this command.`,
 		}
 
 		if dryRun {
-				fmt.Printf("DRY RUN: Would rename %d issues from prefix '%s' to '%s'\n\n", len(issues), oldPrefix, newPrefix)
+			fmt.Printf("DRY RUN: Would rename %d issues from prefix '%s' to '%s'\n\n", len(issues), oldPrefix, newPrefix)
 			fmt.Printf("Sample changes:\n")
 			for i, issue := range issues {
 				if i >= 5 {
@@ -201,7 +202,6 @@ NOTE: This is a rare operation. Most users never need this command.`,
 			}
 			return
 		}
-
 
 		fmt.Printf("Renaming %d issues from prefix '%s' to '%s'...\n", len(issues), oldPrefix, newPrefix)
 
@@ -256,7 +256,7 @@ NOTE: This is a rare operation. Most users never need this command.`,
 }
 
 func validatePrefix(prefix string) error {
-	prefix = strings.TrimRight(prefix, "-")
+	prefix = routing.NormalizePrefix(prefix)
 
 	if prefix == "" {
 		return fmt.Errorf("prefix cannot be empty")
@@ -278,7 +278,7 @@ func validatePrefix(prefix string) error {
 func detectPrefixes(issues []*types.Issue) map[string]int {
 	prefixes := make(map[string]int)
 	for _, issue := range issues {
-		prefix := utils.ExtractIssuePrefix(issue.ID)
+		prefix := routing.ExtractIssuePrefix(issue.ID)
 		if prefix != "" {
 			prefixes[prefix]++
 		}
@@ -303,7 +303,7 @@ func repairPrefixes(ctx context.Context, st storage.Storage, actorName string, t
 	var incorrectIssues []issueSort
 
 	for _, issue := range issues {
-		prefix := utils.ExtractIssuePrefix(issue.ID)
+		prefix := routing.ExtractIssuePrefix(issue.ID)
 		number := utils.ExtractIssueNumber(issue.ID)
 
 		if prefix == targetPrefix {

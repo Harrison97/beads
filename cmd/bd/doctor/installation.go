@@ -13,6 +13,7 @@ import (
 	"github.com/steveyegge/beads/cmd/bd/doctor/fix"
 	"github.com/steveyegge/beads/internal/beads"
 	"github.com/steveyegge/beads/internal/git"
+	"github.com/steveyegge/beads/internal/routing"
 	"github.com/steveyegge/beads/internal/syncbranch"
 )
 
@@ -22,7 +23,7 @@ func CheckInstallation(path string) DoctorCheck {
 	if _, err := os.Stat(beadsDir); os.IsNotExist(err) {
 		// Auto-detect prefix from directory name
 		prefix := filepath.Base(path)
-		prefix = strings.TrimRight(prefix, "-")
+		prefix = routing.NormalizePrefix(prefix)
 
 		return DoctorCheck{
 			Name:    "Installation",

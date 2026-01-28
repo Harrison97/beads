@@ -16,7 +16,6 @@ import (
 	"github.com/steveyegge/beads/internal/lockfile"
 	"github.com/steveyegge/beads/internal/routing"
 	"github.com/steveyegge/beads/internal/types"
-	"github.com/steveyegge/beads/internal/utils"
 )
 
 // BootstrapResult contains statistics about the bootstrap operation
@@ -348,7 +347,7 @@ func detectPrefixFromIssues(issues []*types.Issue) string {
 		if issue.ID == "" {
 			continue
 		}
-		prefix := utils.ExtractIssuePrefix(issue.ID)
+		prefix := routing.ExtractIssuePrefix(issue.ID)
 		if prefix != "" {
 			prefixCounts[prefix]++
 		}

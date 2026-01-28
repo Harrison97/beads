@@ -16,7 +16,6 @@ import (
 	"github.com/steveyegge/beads/internal/routing"
 	"github.com/steveyegge/beads/internal/storage"
 	"github.com/steveyegge/beads/internal/types"
-	"github.com/steveyegge/beads/internal/utils"
 )
 
 // OrphanHandling is an alias for storage.OrphanHandling for backward compatibility.
@@ -294,7 +293,7 @@ func handlePrefixMismatch(ctx context.Context, store storage.Storage, issues []*
 		}
 		if !prefixMatches {
 			// Extract prefix for error reporting (best effort)
-			prefix := utils.ExtractIssuePrefix(issue.ID)
+			prefix := routing.ExtractIssuePrefix(issue.ID)
 			if issue.IsTombstone() {
 				tombstoneMismatchPrefixes[prefix]++
 				tombstonesToRemove = append(tombstonesToRemove, issue.ID)
@@ -703,8 +702,8 @@ func upsertIssues(ctx context.Context, store storage.Storage, issues []*types.Is
 				result.Unchanged++
 			} else {
 				// Same content, different ID - check if this is a rename or cross-prefix duplicate
-				existingPrefix := utils.ExtractIssuePrefix(existing.ID)
-				incomingPrefix := utils.ExtractIssuePrefix(incoming.ID)
+				existingPrefix := routing.ExtractIssuePrefix(existing.ID)
+				incomingPrefix := routing.ExtractIssuePrefix(incoming.ID)
 
 				if existingPrefix != incomingPrefix {
 					// Cross-prefix content match: same content but different projects/prefixes.
@@ -1011,8 +1010,8 @@ func upsertIssuesTx(ctx context.Context, tx storage.Transaction, store storage.S
 			if existing.ID == incoming.ID {
 				result.Unchanged++
 			} else {
-				existingPrefix := utils.ExtractIssuePrefix(existing.ID)
-				incomingPrefix := utils.ExtractIssuePrefix(incoming.ID)
+				existingPrefix := routing.ExtractIssuePrefix(existing.ID)
+				incomingPrefix := routing.ExtractIssuePrefix(incoming.ID)
 				if existingPrefix != incomingPrefix {
 					result.Skipped++
 				} else if !opts.SkipUpdate {

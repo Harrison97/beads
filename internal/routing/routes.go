@@ -153,16 +153,12 @@ func FindTownBeadsDir(currentBeadsDir string) (string, error) {
 	return townBeadsDir, nil
 }
 
-// ExtractPrefix extracts the prefix from an issue ID.
-// For "gt-abc123", returns "gt-".
-// For "bd-abc123", returns "bd-".
-// Returns empty string if no prefix found.
 func ExtractPrefix(id string) string {
-	idx := strings.Index(id, "-")
-	if idx < 0 {
+	prefix := ExtractIssuePrefix(id)
+	if prefix == "" {
 		return ""
 	}
-	return id[:idx+1] // Include the hyphen
+	return prefix + "-"
 }
 
 // NormalizePrefix trims a trailing hyphen to normalize comparisons.

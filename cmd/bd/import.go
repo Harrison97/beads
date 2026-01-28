@@ -16,9 +16,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/steveyegge/beads/internal/beads"
 	"github.com/steveyegge/beads/internal/debug"
+	"github.com/steveyegge/beads/internal/routing"
 	"github.com/steveyegge/beads/internal/storage/factory"
 	"github.com/steveyegge/beads/internal/types"
-	"github.com/steveyegge/beads/internal/utils"
 	"golang.org/x/term"
 )
 
@@ -219,10 +219,10 @@ NOTE: Import requires direct database access and does not work with daemon mode.
 					}()
 					in = f
 					scanner = bufio.NewScanner(in)
-					allIssues = nil        // Reset issues list
-					deletionMarkers = nil  // Reset deletion markers list
-					lineNum = 0            // Reset line counter
-					continue               // Restart parsing from beginning
+					allIssues = nil       // Reset issues list
+					deletionMarkers = nil // Reset deletion markers list
+					lineNum = 0           // Reset line counter
+					continue              // Restart parsing from beginning
 				} else {
 					// Can't retry stdin - should not happen since git conflicts only in files
 					fmt.Fprintf(os.Stderr, "Error: Cannot retry merge from stdin\n")
@@ -314,7 +314,7 @@ NOTE: Import requires direct database access and does not work with daemon mode.
 				}
 				prefixSource = "directory"
 			}
-			detectedPrefix = strings.TrimRight(detectedPrefix, "-")
+			detectedPrefix = routing.NormalizePrefix(detectedPrefix)
 
 			if err := store.SetConfig(initCtx, "issue_prefix", detectedPrefix); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: failed to set issue prefix: %v\n", err)
@@ -852,7 +852,7 @@ func attemptAutoMerge(conflictedPath string) error {
 }
 
 // detectPrefixFromIssues extracts the common prefix from issue IDs
-// Uses utils.ExtractIssuePrefix which handles multi-part prefixes correctly
+// Uses routing.ExtractIssuePrefix which handles multi-part prefixes correctly
 func detectPrefixFromIssues(issues []*types.Issue) string {
 	if len(issues) == 0 {
 		return ""
@@ -861,7 +861,7 @@ func detectPrefixFromIssues(issues []*types.Issue) string {
 	// Count prefix occurrences
 	prefixCounts := make(map[string]int)
 	for _, issue := range issues {
-		prefix := utils.ExtractIssuePrefix(issue.ID)
+		prefix := routing.ExtractIssuePrefix(issue.ID)
 		if prefix != "" {
 			prefixCounts[prefix]++
 		}

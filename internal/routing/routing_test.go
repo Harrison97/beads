@@ -106,7 +106,7 @@ func TestExtractPrefix(t *testing.T) {
 		{"hq-1234", "hq-"},
 		{"abc123", ""}, // No hyphen
 		{"", ""},       // Empty string
-		{"-abc", "-"},  // Starts with hyphen
+		{"-abc", ""},   // Starts with hyphen
 	}
 
 	for _, tt := range tests {

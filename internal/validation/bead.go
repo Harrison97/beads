@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/steveyegge/beads/internal/routing"
 	"github.com/steveyegge/beads/internal/types"
-	"github.com/steveyegge/beads/internal/utils"
 )
 
 // ParsePriority extracts and validates a priority value from content.
@@ -13,12 +13,12 @@ import (
 // Returns the parsed priority (0-4) or -1 if invalid.
 func ParsePriority(content string) int {
 	content = strings.TrimSpace(content)
-	
+
 	// Handle "P1", "P0", etc. format
 	if strings.HasPrefix(strings.ToUpper(content), "P") {
 		content = content[1:] // Strip the "P" prefix
 	}
-	
+
 	var p int
 	if _, err := fmt.Sscanf(content, "%d", &p); err == nil && p >= 0 && p <= 4 {
 		return p
@@ -70,7 +70,7 @@ func ValidateIDFormat(id string) (string, error) {
 	// by looking at the last hyphen and checking if suffix is hash-like.
 	// This fixes the bug where "bead-me-up-3e9" was parsed as prefix "bead"
 	// instead of "bead-me-up".
-	prefix := utils.ExtractIssuePrefix(id)
+	prefix := routing.ExtractIssuePrefix(id)
 
 	return prefix, nil
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/steveyegge/beads/internal/config"
 	"github.com/steveyegge/beads/internal/configfile"
 	"github.com/steveyegge/beads/internal/git"
+	"github.com/steveyegge/beads/internal/routing"
 	"github.com/steveyegge/beads/internal/storage"
 	"github.com/steveyegge/beads/internal/storage/dolt"
 	"github.com/steveyegge/beads/internal/storage/factory"
@@ -147,7 +148,7 @@ variable.`,
 			if issueCount > 0 {
 				firstIssue, err := readFirstIssueFromGit(jsonlPath, gitRef)
 				if firstIssue != nil && err == nil {
-					prefix = utils.ExtractIssuePrefix(firstIssue.ID)
+					prefix = routing.ExtractIssuePrefix(firstIssue.ID)
 				}
 			}
 		}
@@ -165,7 +166,7 @@ variable.`,
 
 		// Normalize prefix: strip trailing hyphens
 		// The hyphen is added automatically during ID generation
-		prefix = strings.TrimRight(prefix, "-")
+		prefix = routing.NormalizePrefix(prefix)
 
 		// Determine beadsDir first (used for all storage path calculations).
 		// BEADS_DIR takes precedence, otherwise use CWD/.beads (with redirect support).

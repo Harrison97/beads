@@ -14,10 +14,10 @@ import (
 	"github.com/steveyegge/beads/internal/beads"
 	"github.com/steveyegge/beads/internal/debug"
 	"github.com/steveyegge/beads/internal/git"
+	"github.com/steveyegge/beads/internal/routing"
 	"github.com/steveyegge/beads/internal/storage"
 	"github.com/steveyegge/beads/internal/syncbranch"
 	"github.com/steveyegge/beads/internal/types"
-	"github.com/steveyegge/beads/internal/utils"
 	"gopkg.in/yaml.v3"
 )
 
@@ -227,8 +227,6 @@ func getLocalSyncBranch(beadsDir string) string {
 	return cfg.SyncBranch
 }
 
-
-
 // importFromJSONLData imports issues from raw JSONL bytes.
 // This is the shared implementation used by both importFromGit and importFromLocalJSONL.
 // Returns the number of issues imported and any error.
@@ -262,7 +260,7 @@ func importFromJSONLData(ctx context.Context, dbFilePath string, store storage.S
 	if len(issues) > 0 {
 		configuredPrefix, err := store.GetConfig(ctx, "issue_prefix")
 		if err == nil && strings.TrimSpace(configuredPrefix) == "" {
-			firstPrefix := utils.ExtractIssuePrefix(issues[0].ID)
+			firstPrefix := routing.ExtractIssuePrefix(issues[0].ID)
 			if firstPrefix != "" {
 				if err := store.SetConfig(ctx, "issue_prefix", firstPrefix); err != nil {
 					return 0, fmt.Errorf("failed to set issue_prefix from imported issues: %w", err)

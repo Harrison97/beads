@@ -13,6 +13,7 @@ import (
 	"github.com/steveyegge/beads/internal/beads"
 	"github.com/steveyegge/beads/internal/config"
 	"github.com/steveyegge/beads/internal/git"
+	"github.com/steveyegge/beads/internal/routing"
 	"github.com/steveyegge/beads/internal/storage/sqlite"
 )
 
@@ -169,7 +170,7 @@ func TestInitCommand(t *testing.T) {
 			if expectedPrefix == "" {
 				expectedPrefix = filepath.Base(tmpDir)
 			} else {
-				expectedPrefix = strings.TrimRight(expectedPrefix, "-")
+				expectedPrefix = routing.NormalizePrefix(expectedPrefix)
 			}
 
 			if prefix != expectedPrefix {

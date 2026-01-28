@@ -18,6 +18,7 @@ import (
 	"github.com/steveyegge/beads/internal/beads"
 	"github.com/steveyegge/beads/internal/config"
 	"github.com/steveyegge/beads/internal/debug"
+	"github.com/steveyegge/beads/internal/routing"
 	"github.com/steveyegge/beads/internal/storage"
 	"github.com/steveyegge/beads/internal/syncbranch"
 	"github.com/steveyegge/beads/internal/types"
@@ -272,7 +273,7 @@ func autoImportIfNewer() {
 					detectedPrefix = "bd"
 				}
 			}
-			detectedPrefix = strings.TrimRight(detectedPrefix, "-")
+			detectedPrefix = routing.NormalizePrefix(detectedPrefix)
 
 			if setErr := store.SetConfig(ctx, "issue_prefix", detectedPrefix); setErr != nil {
 				fmt.Fprintf(os.Stderr, "Auto-import: failed to initialize database prefix: %v\n", setErr)

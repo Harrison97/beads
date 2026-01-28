@@ -1,8 +1,6 @@
-package utils
+package routing
 
-import (
-	"testing"
-)
+import "testing"
 
 // TestExtractIssuePrefixAllLetterHash tests issue #446:
 // Base36 hashes can be all-letters (no digits), but isLikelyHash requires
@@ -75,7 +73,7 @@ func TestExtractIssuePrefixWordSuffix(t *testing.T) {
 //
 // Key insight: English word collision probability varies by length:
 // - 3-char: 36^3 = 46K hashes, ~1000 common words = ~2% collision (TOO HIGH)
-// - 4-char: 36^4 = 1.6M hashes, ~3000 common words = ~0.2% collision (acceptable)
+// - 4-char: 36^4 = 1.6M hashes, ~3000 words = ~0.2% collision (acceptable)
 // - 5+ char: collision rate negligible
 //
 // Proposed fix: accept all-letter for 3-char only, keep digit requirement for 4+.
@@ -124,4 +122,3 @@ func TestIsLikelyHashAllLetters(t *testing.T) {
 		})
 	}
 }
-
