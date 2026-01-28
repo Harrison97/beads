@@ -72,24 +72,7 @@ func resolveAndGetFromStore(ctx context.Context, s storage.Storage, id string, r
 func getIssueWithRouting(ctx context.Context, localStore storage.Storage, id string, resolvePartial bool) (*RoutedResult, error) {
 	// Step 1: If routing is available, try routed store first when resolving partial IDs.
 	if dbPath == "" {
-		if resolvePartial {
-			return resolveAndGetFromStore(ctx, localStore, id, false)
-		}
-		issue, err := localStore.GetIssue(ctx, id)
-		if err == nil && issue != nil {
-			return &RoutedResult{
-				Issue:      issue,
-				Store:      localStore,
-				Routed:     false,
-				ResolvedID: id,
-			}, nil
-		}
-		return &RoutedResult{
-			Issue:      issue,
-			Store:      localStore,
-			Routed:     false,
-			ResolvedID: id,
-		}, err
+		return getLocalIssue(ctx, localStore, id, resolvePartial)
 	}
 
 	beadsDir := filepath.Dir(dbPath)
@@ -97,24 +80,7 @@ func getIssueWithRouting(ctx context.Context, localStore storage.Storage, id str
 	routedStorage, routeErr := routing.GetRoutedStorageWithOpener(ctx, id, beadsDir, factory.NewFromConfig)
 	if routeErr != nil || routedStorage == nil {
 		// No routing found or error - fall back to local store
-		if resolvePartial {
-			return resolveAndGetFromStore(ctx, localStore, id, false)
-		}
-		issue, err := localStore.GetIssue(ctx, id)
-		if err == nil && issue != nil {
-			return &RoutedResult{
-				Issue:      issue,
-				Store:      localStore,
-				Routed:     false,
-				ResolvedID: id,
-			}, nil
-		}
-		return &RoutedResult{
-			Issue:      issue,
-			Store:      localStore,
-			Routed:     false,
-			ResolvedID: id,
-		}, err
+		return getLocalIssue(ctx, localStore, id, resolvePartial)
 	}
 
 	// Step 2: Try the routed storage
@@ -125,27 +91,31 @@ func getIssueWithRouting(ctx context.Context, localStore storage.Storage, id str
 			return nil, err
 		}
 		// Fall back to local store if not found in routed store.
-		if resolvePartial {
-			return resolveAndGetFromStore(ctx, localStore, id, false)
-		}
-		issue, err := localStore.GetIssue(ctx, id)
-		if err == nil && issue != nil {
-			return &RoutedResult{
-				Issue:      issue,
-				Store:      localStore,
-				Routed:     false,
-				ResolvedID: id,
-			}, nil
-		}
+		return getLocalIssue(ctx, localStore, id, resolvePartial)
+	}
+	result.closeFn = func() { _ = routedStorage.Close() }
+	return result, nil
+}
+
+func getLocalIssue(ctx context.Context, localStore storage.Storage, id string, resolvePartial bool) (*RoutedResult, error) {
+	if resolvePartial {
+		return resolveAndGetFromStore(ctx, localStore, id, false)
+	}
+	issue, err := localStore.GetIssue(ctx, id)
+	if err == nil && issue != nil {
 		return &RoutedResult{
 			Issue:      issue,
 			Store:      localStore,
 			Routed:     false,
 			ResolvedID: id,
-		}, err
+		}, nil
 	}
-	result.closeFn = func() { _ = routedStorage.Close() }
-	return result, nil
+	return &RoutedResult{
+		Issue:      issue,
+		Store:      localStore,
+		Routed:     false,
+		ResolvedID: id,
+	}, err
 }
 
 // getRoutedStoreForID returns a storage connection for an issue ID if routing is needed.
